@@ -1,0 +1,89 @@
+
+// Including the ESP8266 WiFi library
+#include <ESP8266WiFi.h>
+#include <DHT.h>
+#include <ThingSpeak.h>
+#include <MQ2.h>
+
+// Uncomment one of the lines below for whatever DHT sensor type you're using!
+#define DHTTYPE DHT11   // DHT 11
+
+// Replace with your network details
+const char* ssid = "Insert SSID";
+const char* password = "Insert password";
+
+
+WiFiClient client;
+
+const int DHTPin = D3;
+const int MQPin = A0;
+//const int GASPin = D8;
+// Initialize DHT sensor.
+DHT dht(DHTPin, DHTTYPE);
+MQ2 mq2(MQPin);
+
+// Temporary variables
+static char temperature[7];
+static char humidity[7];
+
+
+unsigned long channelID = 1040273; //your channel
+const char * myWriteAPIKey = "SGPPAKVVCWB8ADVX"; // your WRITE API key
+const char* server = "api.thingspeak.com";
+
+const int postingInterval = 5 * 1000; // post data every 5 seconds
+
+// only runs once on boot
+void setup() {
+  // Initializing serial port for debugging purposes
+  Serial.begin(115200);
+  delay(10);
+
+  dht.begin();
+  mq2.begin();
+  WiFi.begin(ssid, password);
+  
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("WiFi connected");
+}
+
+// runs over and over again
+void loop() {
+  ThingSpeak.begin(client);
+  if (client.connect(server, 80)) {
+
+// **** This part reads only sensors and calculates
+      // Sensor readings may also be up to 2 seconds 'old' (its a very slow sensor)
+      float h = dht.readHumidity();
+      // Read temperature as Celsius (the default)
+      float t = dht.readTemperature();
+
+      float lpg = mq2.readLPG();
+      float co = mq2.readCO();
+      float smoke = mq2.readSmoke();
+      // Check if any reads failed and exit early (to try again).
+      if (isnan(h) || isnan(t) ){
+          Serial.println("Failed to read from DHT sensor!");
+          strcpy(temperature,"Failed");
+          strcpy(humidity, "Failed");         
+      } else if (isnan(lpg) || isnan(co) || isnan(smoke)){
+          Serial.println("Failed to read from MQ2 sensor!");
+      }
+      else{
+          ThingSpeak.setField(1,t);
+          ThingSpeak.setField(2,h);
+          ThingSpeak.setField(3,lpg);
+          ThingSpeak.setField(4,co);
+          ThingSpeak.setField(5,smoke);
+      }
+            
+      ThingSpeak.writeFields(channelID, myWriteAPIKey);
+  }
+    client.stop();
+
+  // wait and then post again
+  delay(postingInterval);
+}
